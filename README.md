@@ -208,6 +208,11 @@ openssl rand -hex 32
 
 # Generate POSTGRES_PASSWORD
 openssl rand -hex 32
+
+# Allow private IP addresses for upstream/pricing/CRS (Recommended: false)
+# ⚠️ WARNING: Setting this to true can allow SSRF attacks to reach internal services
+#             (e.g., AWS/GCP/Azure metadata services at 169.254.169.254)
+SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 ```
 
 ```bash
