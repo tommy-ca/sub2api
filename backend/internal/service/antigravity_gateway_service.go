@@ -12,14 +12,13 @@ import (
 	mathrand "math/rand"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/util/envutil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -1957,12 +1956,8 @@ func sleepAntigravityBackoffWithContext(ctx context.Context, attempt int) bool {
 }
 
 func antigravityUseScopeRateLimit() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityScopeRateLimitEnv)))
 	// 默认开启按配额域限流，只有明确设置为禁用值时才关闭
-	if v == "0" || v == "false" || v == "no" || v == "off" {
-		return false
-	}
-	return true
+	return envutil.GetBool(antigravityScopeRateLimitEnv, true)
 }
 
 func antigravityHasAccountSwitch(ctx context.Context) bool {
@@ -1976,24 +1971,16 @@ func antigravityHasAccountSwitch(ctx context.Context) bool {
 }
 
 func antigravityMaxRetries() int {
-	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesEnv))
-	if raw == "" {
-		return antigravityDefaultMaxRetries
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
+	value := envutil.GetInt(antigravityMaxRetriesEnv, antigravityDefaultMaxRetries)
+	if value <= 0 {
 		return antigravityDefaultMaxRetries
 	}
 	return value
 }
 
 func antigravityMaxRetriesAfterSwitch() int {
-	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesAfterSwitchEnv))
-	if raw == "" {
-		return antigravityMaxRetries()
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
+	value := envutil.GetInt(antigravityMaxRetriesAfterSwitchEnv, 0)
+	if value <= 0 {
 		return antigravityMaxRetries()
 	}
 	return value
@@ -2012,10 +1999,8 @@ func antigravityMaxRetriesForModel(model string, afterSwitch bool) int {
 	}
 
 	if envKey != "" {
-		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
-			if value, err := strconv.Atoi(raw); err == nil && value > 0 {
-				return value
-			}
+		if value := envutil.GetInt(envKey, 0); value > 0 {
+			return value
 		}
 	}
 	if afterSwitch {
@@ -2025,17 +2010,17 @@ func antigravityMaxRetriesForModel(model string, afterSwitch bool) int {
 }
 
 func antigravityUseMappedModelForBilling() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityBillingModelEnv)))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	return envutil.GetBool(antigravityBillingModelEnv, false)
 }
 
 func antigravityFallbackCooldownSeconds() (time.Duration, bool) {
-	raw := strings.TrimSpace(os.Getenv(antigravityFallbackSecondsEnv))
-	if raw == "" {
+	seconds := envutil.GetInt(antigravityFallbackSecondsEnv, 0)
+	if seconds <= 0 {
 		return 0, false
 	}
-	seconds, err := strconv.Atoi(raw)
-	if err != nil || seconds <= 0 {
+	return time.Duration(seconds) * time.Second, true
+}
+
 		return 0, false
 	}
 	return time.Duration(seconds) * time.Second, true

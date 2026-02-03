@@ -55,8 +55,13 @@ docker-compose -f docker-compose.local.yml up -d
 # View logs
 docker-compose -f docker-compose.local.yml logs -f sub2api
 
+<<<<<<< HEAD
 # If admin password was auto-generated, find it in logs:
 docker-compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+=======
+# If admin password was auto-generated, retrieve it:
+docker compose exec sub2api cat /app/data/.initial_admin_password
+>>>>>>> 50f448c5 (refactor: resolve all pending todos and optimize codebase)
 
 # Access Web UI
 # http://localhost:8080
@@ -154,7 +159,7 @@ When using Docker Compose with `AUTO_SETUP=true`:
   export CF_TUNNEL_TOKEN=your_token_here
   docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.tunnel-cloudflare.yml up -d
   ```
-  The `cloudflared` sidecar proxies `sub2api:8080`; configure hostname/routes in Cloudflare Zero Trust. Token mode avoids mounting credentials.
+  The `cloudflared` sidecar proxies `sub2api:8080`; configure hostname/routes in Cloudflare Zero Trust. Token mode avoids mounting credentials. All services share the `sub2api-network`.
 
 - **Tailscale**: add the override with an auth key:
   ```bash
@@ -162,7 +167,7 @@ When using Docker Compose with `AUTO_SETUP=true`:
   # Optional: set TS_EXTRA_ARGS to advertise routes, e.g. --advertise-routes=127.0.0.1/32
   docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.tunnel-tailscale.yml up -d
   ```
-  The sidecar keeps Sub2API bound to loopback; peers reach it through Tailscale userspace networking unless you advertise routes.
+  The sidecar keeps Sub2API bound to loopback; peers reach it through Tailscale userspace networking unless you advertise routes. All services share the `sub2api-network`.
 
 ### Database Migration Notes (PostgreSQL)
 

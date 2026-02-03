@@ -3,7 +3,7 @@ services:
     image: cloudflare/cloudflared:2025.1.0
     container_name: sub2api-cloudflared
     restart: unless-stopped
-    command: tunnel run
+    command: tunnel run --metrics 0.0.0.0:2000
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN:?CF_TUNNEL_TOKEN is required}
       - NO_AUTOUPDATE=true
@@ -11,9 +11,9 @@ services:
       sub2api:
         condition: service_healthy
     networks:
-      - frontend-network
+      - sub2api-network
     healthcheck:
-      test: ["CMD", "cloudflared", "--version"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2000/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

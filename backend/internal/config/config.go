@@ -66,8 +66,9 @@ type Config struct {
 }
 
 type GeminiConfig struct {
-	OAuth GeminiOAuthConfig `mapstructure:"oauth"`
-	Quota GeminiQuotaConfig `mapstructure:"quota"`
+	OAuth       GeminiOAuthConfig `mapstructure:"oauth"`
+	Antigravity GeminiOAuthConfig `mapstructure:"antigravity"`
+	Quota       GeminiQuotaConfig `mapstructure:"quota"`
 }
 
 type GeminiOAuthConfig struct {
@@ -899,6 +900,9 @@ func setDefaults() {
 	viper.SetDefault("gemini.oauth.client_id", "")
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
+	viper.SetDefault("gemini.antigravity.client_id", "")
+	viper.SetDefault("gemini.antigravity.client_secret", "")
+	viper.SetDefault("gemini.antigravity.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
 }
 

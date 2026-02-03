@@ -1,6 +1,9 @@
 package urlvalidator
 
-import "testing"
+import (
+	"net"
+	"testing"
+)
 
 func TestValidateURLFormat(t *testing.T) {
 	if _, err := ValidateURLFormat("", false); err == nil {
@@ -47,5 +50,32 @@ func TestValidateURLFormat(t *testing.T) {
 	}
 	if normalized != "https://example.com/api/v1" {
 		t.Fatalf("expected trailing slash to be removed from path, got %s", normalized)
+	}
+}
+
+func TestIsPrivateIP(t *testing.T) {
+	tests := []struct {
+		ip       string
+		expected bool
+	}{
+		{"127.0.0.1", true},
+		{"::1", true},
+		{"10.0.0.1", true},
+		{"172.16.0.1", true},
+		{"192.168.1.1", true},
+		{"169.254.169.254", true},
+		{"100.64.0.1", true},
+		{"100.127.255.255", true},
+		{"198.18.0.1", true},
+		{"198.19.255.255", true},
+		{"8.8.8.8", false},
+		{"1.1.1.1", false},
+		{"20.20.20.20", false},
+	}
+
+	for _, tt := range tests {
+		if res := IsPrivateIP(net.ParseIP(tt.ip)); res != tt.expected {
+			t.Errorf("IsPrivateIP(%s) failed, expected %t, got %t", tt.ip, tt.expected, res)
+		}
 	}
 }

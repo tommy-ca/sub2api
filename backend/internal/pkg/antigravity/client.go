@@ -129,10 +129,12 @@ func (r *LoadCodeAssistResponse) GetTier() string {
 
 // Client Antigravity API 客户端
 type Client struct {
-	httpClient *http.Client
+	httpClient   *http.Client
+	clientID     string
+	clientSecret string
 }
 
-func NewClient(proxyURL string) *Client {
+func NewClient(proxyURL string, cfg OAuthConfig) *Client {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
@@ -146,7 +148,9 @@ func NewClient(proxyURL string) *Client {
 	}
 
 	return &Client{
-		httpClient: client,
+		httpClient:   client,
+		clientID:     cfg.ClientID,
+		clientSecret: cfg.ClientSecret,
 	}
 }
 
@@ -188,8 +192,8 @@ func shouldFallbackToNextURL(err error, statusCode int) bool {
 // ExchangeCode 用 authorization code 交换 token
 func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (*TokenResponse, error) {
 	params := url.Values{}
-	params.Set("client_id", ClientID)
-	params.Set("client_secret", ClientSecret)
+	params.Set("client_id", c.clientID)
+	params.Set("client_secret", c.clientSecret)
 	params.Set("code", code)
 	params.Set("redirect_uri", RedirectURI)
 	params.Set("grant_type", "authorization_code")
@@ -227,8 +231,8 @@ func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (*
 // RefreshToken 刷新 access_token
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenResponse, error) {
 	params := url.Values{}
-	params.Set("client_id", ClientID)
-	params.Set("client_secret", ClientSecret)
+	params.Set("client_id", c.clientID)
+	params.Set("client_secret", c.clientSecret)
 	params.Set("refresh_token", refreshToken)
 	params.Set("grant_type", "refresh_token")
 

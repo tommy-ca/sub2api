@@ -60,7 +60,7 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 		Timeout:            defaultProxyProbeTimeout,
 		InsecureSkipVerify: s.insecureSkipVerify,
 		ProxyStrict:        true,
-		ValidateResolvedIP: s.validateResolvedIP,
+		ValidateResolvedIP: true,
 		AllowPrivateHosts:  s.allowPrivateHosts,
 	})
 	if err != nil {

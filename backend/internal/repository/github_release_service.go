@@ -22,8 +22,9 @@ type githubReleaseClient struct {
 // proxyURL 为空时直连 GitHub，支持 http/https/socks5/socks5h 协议
 func NewGitHubReleaseClient(proxyURL string) service.GitHubReleaseClient {
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout:  30 * time.Second,
-		ProxyURL: proxyURL,
+		Timeout:            30 * time.Second,
+		ProxyURL:           proxyURL,
+		ValidateResolvedIP: true,
 	})
 	if err != nil {
 		sharedClient = &http.Client{Timeout: 30 * time.Second}
@@ -31,8 +32,9 @@ func NewGitHubReleaseClient(proxyURL string) service.GitHubReleaseClient {
 
 	// 下载客户端需要更长的超时时间
 	downloadClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout:  10 * time.Minute,
-		ProxyURL: proxyURL,
+		Timeout:            10 * time.Minute,
+		ProxyURL:           proxyURL,
+		ValidateResolvedIP: true,
 	})
 	if err != nil {
 		downloadClient = &http.Client{Timeout: 10 * time.Minute}

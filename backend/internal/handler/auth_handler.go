@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/setup"
 
 	"github.com/gin-gonic/gin"
 )
@@ -96,6 +97,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// Cleanup initial password file on first successful admin login
+	if user.Role == service.RoleAdmin {
+		setup.CleanupInitialPassword()
+	}
+
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
@@ -166,6 +172,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			UserEmailMasked: service.MaskEmail(user.Email),
 		})
 		return
+	}
+
+	// Cleanup initial password file on first successful admin login
+	if user.Role == service.RoleAdmin {
+		setup.CleanupInitialPassword()
 	}
 
 	response.Success(c, AuthResponse{
@@ -243,6 +254,11 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 	if err != nil {
 		response.InternalError(c, "Failed to generate token")
 		return
+	}
+
+	// Cleanup initial password file on first successful admin login
+	if user.Role == service.RoleAdmin {
+		setup.CleanupInitialPassword()
 	}
 
 	response.Success(c, AuthResponse{

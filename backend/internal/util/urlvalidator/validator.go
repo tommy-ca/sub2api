@@ -84,8 +84,38 @@ func ValidateHTTPSURL(raw string, opts ValidationOptions) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+// IsPrivateIP checks if the given IP address is private, loopback, link-local, or unspecified.
+// It includes standard RFC 1918 ranges, RFC 4193 (IPv6), and additional internal-use ranges
+// like Carrier-grade NAT (100.64.0.0/10) and Benchmarking (198.18.0.0/15).
+func IsPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	// Standard checks
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+
+	// Additional internal/reserved ranges not covered by ip.IsPrivate() in older Go versions
+	// or specific to some cloud/provider internal networks.
+
+	// Carrier-grade NAT: 100.64.0.0/10
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] == 100 && (ip4[1] >= 64 && ip4[1] <= 127) {
+			return true
+		}
+		// Inter-network benchmarking: 198.18.0.0/15
+		if ip4[0] == 198 && (ip4[1] >= 18 && ip4[1] <= 19) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ValidateResolvedIP 验证 DNS 解析后的 IP 地址是否安全
-// 用于防止 DNS Rebinding 攻击：在实际 HTTP 请求时调用此函数验证解析后的 IP
 func ValidateResolvedIP(host string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -96,8 +126,7 @@ func ValidateResolvedIP(host string) error {
 	}
 
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		if IsPrivateIP(ip) {
 			return fmt.Errorf("resolved ip %s is not allowed", ip.String())
 		}
 	}

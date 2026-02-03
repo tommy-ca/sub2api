@@ -18,10 +18,6 @@ const (
 	TokenURL     = "https://oauth2.googleapis.com/token"
 	UserInfoURL  = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-	// Antigravity OAuth 客户端凭证
-	ClientID     = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-	ClientSecret = "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"
-
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"
 
@@ -34,6 +30,10 @@ const (
 
 	// User-Agent（与 Antigravity-Manager 保持一致）
 	UserAgent = "antigravity/1.15.8 windows/amd64"
+
+	// Default Client Credentials (empty by default for security)
+	DefaultClientID     = ""
+	DefaultClientSecret = ""
 
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute
@@ -293,10 +293,16 @@ func base64URLEncode(data []byte) string {
 	return strings.TrimRight(base64.URLEncoding.EncodeToString(data), "=")
 }
 
+// OAuthConfig defines the credentials for Antigravity OAuth
+type OAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+}
+
 // BuildAuthorizationURL 构建 Google OAuth 授权 URL
-func BuildAuthorizationURL(state, codeChallenge string) string {
+func BuildAuthorizationURL(cfg OAuthConfig, state, codeChallenge string) string {
 	params := url.Values{}
-	params.Set("client_id", ClientID)
+	params.Set("client_id", cfg.ClientID)
 	params.Set("redirect_uri", RedirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", Scopes)

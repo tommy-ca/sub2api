@@ -7,16 +7,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
 type AntigravityOAuthService struct {
+	cfg          *config.Config
 	sessionStore *antigravity.SessionStore
 	proxyRepo    ProxyRepository
 }
 
-func NewAntigravityOAuthService(proxyRepo ProxyRepository) *AntigravityOAuthService {
+func NewAntigravityOAuthService(cfg *config.Config, proxyRepo ProxyRepository) *AntigravityOAuthService {
 	return &AntigravityOAuthService{
+		cfg:          cfg,
 		sessionStore: antigravity.NewSessionStore(),
 		proxyRepo:    proxyRepo,
 	}
@@ -27,6 +30,13 @@ type AntigravityAuthURLResult struct {
 	AuthURL   string `json:"auth_url"`
 	SessionID string `json:"session_id"`
 	State     string `json:"state"`
+}
+
+func (s *AntigravityOAuthService) getOAuthConfig() antigravity.OAuthConfig {
+	return antigravity.OAuthConfig{
+		ClientID:     s.cfg.Gemini.Antigravity.ClientID,
+		ClientSecret: s.cfg.Gemini.Antigravity.ClientSecret,
+	}
 }
 
 // GenerateAuthURL 生成 Google OAuth 授权链接
@@ -63,7 +73,7 @@ func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *
 	s.sessionStore.Set(sessionID, session)
 
 	codeChallenge := antigravity.GenerateCodeChallenge(codeVerifier)
-	authURL := antigravity.BuildAuthorizationURL(state, codeChallenge)
+	authURL := antigravity.BuildAuthorizationURL(s.getOAuthConfig(), state, codeChallenge)
 
 	return &AntigravityAuthURLResult{
 		AuthURL:   authURL,
@@ -112,7 +122,7 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 		}
 	}
 
-	client := antigravity.NewClient(proxyURL)
+	client := antigravity.NewClient(proxyURL, s.getOAuthConfig())
 
 	// 交换 token
 	tokenResp, err := client.ExchangeCode(ctx, input.Code, session.CodeVerifier)
@@ -167,7 +177,7 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 			time.Sleep(backoff)
 		}
 
-		client := antigravity.NewClient(proxyURL)
+		client := antigravity.NewClient(proxyURL, s.getOAuthConfig())
 		tokenResp, err := client.RefreshToken(ctx, refreshToken)
 		if err == nil {
 			now := time.Now()
@@ -272,7 +282,7 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 			time.Sleep(backoff)
 		}
 
-		client := antigravity.NewClient(proxyURL)
+		client := antigravity.NewClient(proxyURL, s.getOAuthConfig())
 		loadResp, _, err := client.LoadCodeAssist(ctx, accessToken)
 
 		if err == nil && loadResp != nil && loadResp.CloudAICompanionProject != "" {

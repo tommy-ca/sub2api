@@ -213,9 +213,6 @@ openssl rand -hex 32
 # 生成 TOTP_ENCRYPTION_KEY
 openssl rand -hex 32
 
-# 生成 POSTGRES_PASSWORD
-openssl rand -hex 32
-
 # 是否允许私有 IP 地址用于上游/定价/CRS（推荐：false）
 # ⚠️ 警告：设为 true 可能允许 SSRF 攻击访问内部服务
 #          （例如 AWS/GCP/Azure 的元数据服务 169.254.169.254）
@@ -253,9 +250,11 @@ docker-compose -f docker-compose.local.yml logs -f sub2api
 
 在浏览器中打开 `http://你的服务器IP:8080`
 
-如果管理员密码是自动生成的，在日志中查找：
+如果管理员密码是自动生成的，可以检索：
 ```bash
-docker-compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+docker compose exec sub2api cat /app/data/.initial_admin_password
+```
+
 ```
 
 #### 升级

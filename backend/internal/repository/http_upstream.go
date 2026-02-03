@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 // 默认配置常量
@@ -79,7 +79,7 @@ type upstreamClientEntry struct {
 // 性能优化：
 // 1. 根据隔离策略缓存客户端实例，避免频繁创建 http.Client
 // 2. 复用 Transport 连接池，减少 TCP 握手和 TLS 协商开销
-// 3. 支持账号级隔离与空闲回收，降低连接层关联风险
+// 3. 支持 账号级隔离与空闲回收，降低连接层关联风险
 // 4. 达到最大连接数后等待可用连接，而非无限创建
 // 5. 仅回收空闲客户端，避免中断活跃请求
 // 6. HTTP/2 多路复用，连接上限不等于并发请求上限
@@ -123,33 +123,13 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
-	if err := s.validateRequestHost(req); err != nil {
-		return nil, err
-	}
-
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClient(proxyURL, accountID, accountConcurrency)
 	if err != nil {
 		return nil, err
 	}
 
-	// 执行请求
-	resp, err := entry.client.Do(req)
-	if err != nil {
-		// 请求失败，立即减少计数
-		atomic.AddInt64(&entry.inFlight, -1)
-		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
-		return nil, err
-	}
-
-	// 包装响应体，在关闭时自动减少计数并更新时间戳
-	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
-	resp.Body = wrapTrackedBody(resp.Body, func() {
-		atomic.AddInt64(&entry.inFlight, -1)
-		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
-	})
-
-	return resp, nil
+	return s.doRequest(entry, req)
 }
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
@@ -183,10 +163,6 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo)
 
-	if err := s.validateRequestHost(req); err != nil {
-		return nil, err
-	}
-
 	// 获取 TLS 指纹 Profile
 	registry := tlsfingerprint.GlobalRegistry()
 	profile := registry.GetProfileByAccountID(accountID)
@@ -206,18 +182,28 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 
 	// 执行请求
-	resp, err := entry.client.Do(req)
+	resp, err := s.doRequest(entry, req)
 	if err != nil {
-		// 请求失败，立即减少计数
-		atomic.AddInt64(&entry.inFlight, -1)
-		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
 		return nil, err
 	}
 
 	slog.Debug("tls_fingerprint_request_success", "account_id", accountID, "status", resp.StatusCode)
 
+	return resp, nil
+}
+
+func (s *httpUpstreamService) doRequest(entry *upstreamClientEntry, req *http.Request) (*http.Response, error) {
+	resp, err := entry.client.Do(req)
+	if err != nil {
+		// 请求失败，立即减少计数
+		atomic.AddInt64(&entry.inFlight, -1)
+		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
+		return nil, err
+	}
+
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
+	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
 	resp.Body = wrapTrackedBody(resp.Body, func() {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -290,16 +276,15 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	// 创建带 TLS 指纹的 Transport
 	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
+	validate := s.shouldValidateResolvedIP()
+	allowPrivate := s.cfg.Security.URLAllowlist.AllowPrivateHosts
+	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile, validate, allowPrivate)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
 	}
 
 	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
 
 	entry := &upstreamClientEntry{
 		client:   client,
@@ -326,30 +311,6 @@ func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
 		return false
 	}
 	return !s.cfg.Security.URLAllowlist.AllowPrivateHosts
-}
-
-func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
-	if !s.shouldValidateResolvedIP() {
-		return nil
-	}
-	if req == nil || req.URL == nil {
-		return errors.New("request url is nil")
-	}
-	host := strings.TrimSpace(req.URL.Hostname())
-	if host == "" {
-		return errors.New("request host is empty")
-	}
-	if err := urlvalidator.ValidateResolvedIP(host); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	return s.validateRequestHost(req)
 }
 
 // acquireClient 获取或创建客户端，并标记为进行中请求
@@ -433,15 +394,14 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 
 	// 缓存未命中或需要重建，创建新客户端
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
-	transport, err := buildUpstreamTransport(settings, parsedProxy)
+	validate := s.shouldValidateResolvedIP()
+	allowPrivate := s.cfg.Security.URLAllowlist.AllowPrivateHosts
+	transport, err := buildUpstreamTransport(settings, parsedProxy, validate, allowPrivate)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build transport: %w", err)
 	}
 	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
 	entry := &upstreamClientEntry{
 		client:   client,
 		proxyKey: proxyKey,
@@ -761,6 +721,8 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 // 参数:
 //   - settings: 连接池配置
 //   - proxyURL: 代理 URL（nil 表示直连）
+//   - validateResolvedIP: 是否验证解析后的 IP (SSRF 保护)
+//   - allowPrivateHosts: 是否允许私有地址
 //
 // 返回:
 //   - *http.Transport: 配置好的 Transport 实例
@@ -772,8 +734,11 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 //   - MaxConnsPerHost: 每主机最大连接数（达到后新请求等待）
 //   - IdleConnTimeout: 空闲连接超时（超时后关闭）
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
-func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Transport, error) {
+func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, validateResolvedIP bool, allowPrivateHosts bool) (*http.Transport, error) {
+	dialer := httpclient.NewDialer(validateResolvedIP, allowPrivateHosts)
+
 	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
@@ -793,6 +758,8 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Tra
 //   - settings: 连接池配置
 //   - proxyURL: 代理 URL（nil 表示直连）
 //   - profile: TLS 指纹配置
+//   - validateResolvedIP: 是否验证解析后的 IP (SSRF 保护)
+//   - allowPrivateHosts: 是否允许私有地址
 //
 // 返回:
 //   - *http.Transport: 配置好的 Transport 实例
@@ -802,8 +769,11 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Tra
 //   - nil/空: 直连，使用 TLSFingerprintDialer
 //   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile, validateResolvedIP bool, allowPrivateHosts bool) (*http.Transport, error) {
+	dialer := httpclient.NewDialer(validateResolvedIP, allowPrivateHosts)
+
 	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
@@ -817,8 +787,9 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
-		dialer := tlsfingerprint.NewDialer(profile, nil)
-		transport.DialTLSContext = dialer.DialTLSContext
+		// Use the hardened base dialer
+		tdialer := tlsfingerprint.NewDialer(profile, dialer.DialContext)
+		transport.DialTLSContext = tdialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {

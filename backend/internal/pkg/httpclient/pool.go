@@ -17,10 +17,12 @@ package httpclient
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
@@ -82,12 +84,8 @@ func buildClient(opts Options) (*http.Client, error) {
 		return nil, err
 	}
 
-	var rt http.RoundTripper = transport
-	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
-		rt = &validatedTransport{base: transport}
-	}
 	return &http.Client{
-		Transport: rt,
+		Transport: transport,
 		Timeout:   opts.Timeout,
 	}, nil
 }
@@ -103,7 +101,10 @@ func buildTransport(opts Options) (*http.Transport, error) {
 		maxIdleConnsPerHost = defaultMaxIdleConnsPerHost
 	}
 
+	dialer := NewDialer(opts.ValidateResolvedIP, opts.AllowPrivateHosts)
+
 	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          maxIdleConns,
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 		MaxConnsPerHost:       opts.MaxConnsPerHost, // 0 表示无限制
@@ -133,6 +134,34 @@ func buildTransport(opts Options) (*http.Transport, error) {
 	return transport, nil
 }
 
+// NewDialer creates a hardened net.Dialer with optional SSRF protection.
+// If validateResolvedIP is true, it attaches a Control function that blocks private IP ranges.
+func NewDialer(validateResolvedIP bool, allowPrivateHosts bool) *net.Dialer {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// SSRF 保护：在 Dial 级别校验 IP 地址，防止 DNS Rebinding 攻击
+	if validateResolvedIP && !allowPrivateHosts {
+		dialer.Control = func(network, address string, c syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				host = address
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return fmt.Errorf("SSRF protection: invalid or unresolved IP address: %s", host)
+			}
+			if urlvalidator.IsPrivateIP(ip) {
+				return fmt.Errorf("SSRF protection: private IP address not allowed: %s", ip)
+			}
+			return nil
+		}
+	}
+	return dialer
+}
+
 func buildClientKey(opts Options) string {
 	return fmt.Sprintf("%s|%s|%s|%t|%t|%t|%t|%d|%d|%d",
 		strings.TrimSpace(opts.ProxyURL),
@@ -146,20 +175,4 @@ func buildClientKey(opts Options) string {
 		opts.MaxIdleConnsPerHost,
 		opts.MaxConnsPerHost,
 	)
-}
-
-type validatedTransport struct {
-	base http.RoundTripper
-}
-
-func (t *validatedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		host := strings.TrimSpace(req.URL.Hostname())
-		if host != "" {
-			if err := urlvalidator.ValidateResolvedIP(host); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return t.base.RoundTrip(req)
 }

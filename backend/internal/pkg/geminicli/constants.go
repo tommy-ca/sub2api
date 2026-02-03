@@ -36,10 +36,10 @@ const (
 	GeminiCLIRedirectURI = "https://codeassist.google.com/authcode"
 
 	// GeminiCLIOAuthClientID/Secret are the public OAuth client credentials used by Google Gemini CLI.
-	// They enable the "login without creating your own OAuth client" experience, but Google may
-	// restrict which scopes are allowed for this client.
-	GeminiCLIOAuthClientID     = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-	GeminiCLIOAuthClientSecret = "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"
+	// They enable the "login without creating your own OAuth client" experience.
+	// Note: These should be configured via environment variables for better security.
+	GeminiCLIOAuthClientID     = ""
+	GeminiCLIOAuthClientSecret = ""
 
 	SessionTTL = 30 * time.Minute
 

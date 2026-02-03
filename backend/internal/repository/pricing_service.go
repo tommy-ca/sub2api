@@ -20,8 +20,9 @@ type pricingRemoteClient struct {
 // proxyURL 为空时直连，支持 http/https/socks5/socks5h 协议
 func NewPricingRemoteClient(proxyURL string) service.PricingRemoteClient {
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout:  30 * time.Second,
-		ProxyURL: proxyURL,
+		Timeout:            30 * time.Second,
+		ProxyURL:           proxyURL,
+		ValidateResolvedIP: true,
 	})
 	if err != nil {
 		sharedClient = &http.Client{Timeout: 30 * time.Second}

@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/envutil"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
@@ -22,8 +23,9 @@ import (
 
 // Config paths
 const (
-	ConfigFileName  = "config.yaml"
-	InstallLockFile = ".installed"
+	ConfigFileName      = "config.yaml"
+	InstallLockFile     = ".installed"
+	InitialPasswordFile = ".initial_admin_password"
 )
 
 // GetDataDir returns the data directory for storing config and lock files.
@@ -462,36 +464,7 @@ func generateSecret(length int) (string, error) {
 
 // AutoSetupEnabled checks if auto setup is enabled via environment variable
 func AutoSetupEnabled() bool {
-	val := os.Getenv("AUTO_SETUP")
-	return val == "true" || val == "1" || val == "yes"
-}
-
-// getEnvOrDefault gets environment variable or returns default value
-func getEnvOrDefault(key, defaultValue string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
-	}
-	return defaultValue
-}
-
-// getEnvIntOrDefault gets environment variable as int or returns default value
-func getEnvIntOrDefault(key string, defaultValue int) int {
-	if val := os.Getenv(key); val != "" {
-		if i, err := strconv.Atoi(val); err == nil {
-			return i
-		}
-	}
-	return defaultValue
-}
-
-// getEnvBoolOrDefault gets environment variable as bool or returns default value
-func getEnvBoolOrDefault(key string, defaultValue bool) bool {
-	if val := os.Getenv(key); val != "" {
-		if b, err := strconv.ParseBool(val); err == nil {
-			return b
-		}
-	}
-	return defaultValue
+	return envutil.GetBool("AUTO_SETUP", false)
 }
 
 // AutoSetupFromEnv performs automatic setup using environment variables
@@ -501,44 +474,44 @@ func AutoSetupFromEnv() error {
 	log.Printf("Data directory: %s", GetDataDir())
 
 	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
-	tz := getEnvOrDefault("TZ", "")
+	tz := envutil.GetString("TZ", "")
 	if tz == "" {
-		tz = getEnvOrDefault("TIMEZONE", "Asia/Shanghai")
+		tz = envutil.GetString("TIMEZONE", "Asia/Shanghai")
 	}
 
 	// Build config from environment variables
 	cfg := &SetupConfig{
 		Database: DatabaseConfig{
-			Host:     getEnvOrDefault("DATABASE_HOST", "localhost"),
-			Port:     getEnvIntOrDefault("DATABASE_PORT", 5432),
-			User:     getEnvOrDefault("DATABASE_USER", "postgres"),
-			Password: getEnvOrDefault("DATABASE_PASSWORD", ""),
-			DBName:   getEnvOrDefault("DATABASE_DBNAME", "sub2api"),
-			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
+			Host:     envutil.GetString("DATABASE_HOST", "localhost"),
+			Port:     envutil.GetInt("DATABASE_PORT", 5432),
+			User:     envutil.GetString("DATABASE_USER", "postgres"),
+			Password: envutil.GetString("DATABASE_PASSWORD", ""),
+			DBName:   envutil.GetString("DATABASE_DBNAME", "sub2api"),
+			SSLMode:  envutil.GetString("DATABASE_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
-			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
-			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
-			DB:        getEnvIntOrDefault("REDIS_DB", 0),
-			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			Host:      envutil.GetString("REDIS_HOST", "localhost"),
+			Port:      envutil.GetInt("REDIS_PORT", 6379),
+			Password:  envutil.GetString("REDIS_PASSWORD", ""),
+			DB:        envutil.GetInt("REDIS_DB", 0),
+			EnableTLS: envutil.GetBool("REDIS_ENABLE_TLS", false),
 		},
 		Admin: AdminConfig{
-			Email:    getEnvOrDefault("ADMIN_EMAIL", "admin@sub2api.local"),
-			Password: getEnvOrDefault("ADMIN_PASSWORD", ""),
+			Email:    envutil.GetString("ADMIN_EMAIL", "admin@sub2api.local"),
+			Password: envutil.GetString("ADMIN_PASSWORD", ""),
 		},
 		Server: ServerConfig{
-			Host: getEnvOrDefault("SERVER_HOST", "0.0.0.0"),
-			Port: getEnvIntOrDefault("SERVER_PORT", 8080),
-			Mode: getEnvOrDefault("SERVER_MODE", "release"),
+			Host: envutil.GetString("SERVER_HOST", "0.0.0.0"),
+			Port: envutil.GetInt("SERVER_PORT", 8080),
+			Mode: envutil.GetString("SERVER_MODE", "release"),
 		},
 		JWT: JWTConfig{
-			Secret:     getEnvOrDefault("JWT_SECRET", ""),
-			ExpireHour: getEnvIntOrDefault("JWT_EXPIRE_HOUR", 24),
+			Secret:     envutil.GetString("JWT_SECRET", ""),
+			ExpireHour: envutil.GetInt("JWT_EXPIRE_HOUR", 24),
 		},
 		Security: SecurityConfig{
 			URLAllowlist: URLAllowlistConfig{
-				AllowPrivateHosts: getEnvBoolOrDefault("SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS", false),
+				AllowPrivateHosts: envutil.GetBool("SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS", false),
 			},
 		},
 		Timezone: tz,
@@ -563,12 +536,10 @@ func AutoSetupFromEnv() error {
 		cfg.Admin.Password = password
 
 		// Write initial password to a one-time file instead of logging to stdout
-		pwdFile := GetDataDir() + "/.initial_admin_password"
+		pwdFile := GetDataDir() + "/" + InitialPasswordFile
 		if err := os.WriteFile(pwdFile, []byte(password), 0600); err != nil {
-			log.Printf("Warning: failed to write initial password to %s: %v", pwdFile, err)
-			// Fallback to log if file write fails, but this is a security risk
-			fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
-			fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
+			log.Fatalf("CRITICAL SECURITY ERROR: failed to write initial password to %s: %v. "+
+				"The application will refuse to start to prevent leaking the password in logs.", pwdFile, err)
 		} else {
 			log.Printf("Initial admin password has been written to %s", pwdFile)
 			fmt.Printf("IMPORTANT: Check %s for the admin password! It will not be shown in logs.\n", pwdFile)
@@ -618,4 +589,25 @@ func AutoSetupFromEnv() error {
 
 	log.Println("Auto setup completed successfully!")
 	return nil
+}
+
+var initialPasswordCleaned atomic.Bool
+
+// CleanupInitialPassword deletes the .initial_admin_password file if it exists.
+// This should be called after a successful admin login.
+func CleanupInitialPassword() {
+	if initialPasswordCleaned.Load() {
+		return
+	}
+
+	pwdFile := GetDataDir() + "/" + InitialPasswordFile
+	err := os.Remove(pwdFile)
+	if err == nil {
+		log.Printf("Initial admin password file %s has been deleted after first login.", pwdFile)
+		initialPasswordCleaned.Store(true)
+	} else if os.IsNotExist(err) {
+		initialPasswordCleaned.Store(true)
+	} else {
+		log.Printf("Warning: failed to delete initial password file %s: %v", pwdFile, err)
+	}
 }

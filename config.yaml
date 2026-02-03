@@ -487,8 +487,8 @@ gemini:
   oauth:
     # Gemini CLI public OAuth credentials (works for both Code Assist and AI Studio)
     # Gemini CLI 公开 OAuth 凭证（适用于 Code Assist 和 AI Studio）
-    client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-    client_secret: "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"
+    client_id: ""
+    client_secret: ""
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     # 可选的权限范围（空格分隔）。留空则根据 oauth_type 自动选择。
     scopes: ""

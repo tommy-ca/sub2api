@@ -4,17 +4,19 @@ import (
 	"context"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
 // AntigravityQuotaFetcher 从 Antigravity API 获取额度
 type AntigravityQuotaFetcher struct {
+	cfg       *config.Config
 	proxyRepo ProxyRepository
 }
 
 // NewAntigravityQuotaFetcher 创建 AntigravityQuotaFetcher
-func NewAntigravityQuotaFetcher(proxyRepo ProxyRepository) *AntigravityQuotaFetcher {
-	return &AntigravityQuotaFetcher{proxyRepo: proxyRepo}
+func NewAntigravityQuotaFetcher(cfg *config.Config, proxyRepo ProxyRepository) *AntigravityQuotaFetcher {
+	return &AntigravityQuotaFetcher{cfg: cfg, proxyRepo: proxyRepo}
 }
 
 // CanFetch 检查是否可以获取此账户的额度
@@ -31,7 +33,10 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	accessToken := account.GetCredential("access_token")
 	projectID := account.GetCredential("project_id")
 
-	client := antigravity.NewClient(proxyURL)
+	client := antigravity.NewClient(proxyURL, antigravity.OAuthConfig{
+		ClientID:     f.cfg.Gemini.Antigravity.ClientID,
+		ClientSecret: f.cfg.Gemini.Antigravity.ClientSecret,
+	})
 
 	// 调用 API 获取配额
 	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID)

@@ -9,14 +9,13 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/envutil"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -657,20 +656,12 @@ func isAddrInTrustedProxies(addr netip.Addr, trusted []netip.Prefix) bool {
 
 func loadOpsWSProxyConfigFromEnv() OpsWSProxyConfig {
 	cfg := OpsWSProxyConfig{
-		TrustProxy:     true,
+		TrustProxy:     envutil.GetBool(envOpsWSTrustProxy, true),
 		TrustedProxies: defaultTrustedProxies(),
-		OriginPolicy:   OriginPolicyPermissive,
+		OriginPolicy:   envutil.GetString(envOpsWSOriginPolicy, OriginPolicyPermissive),
 	}
 
-	if v := strings.TrimSpace(os.Getenv(envOpsWSTrustProxy)); v != "" {
-		if parsed, err := strconv.ParseBool(v); err == nil {
-			cfg.TrustProxy = parsed
-		} else {
-			log.Printf("[OpsWS] invalid %s=%q (expected bool); using default=%v", envOpsWSTrustProxy, v, cfg.TrustProxy)
-		}
-	}
-
-	if raw := strings.TrimSpace(os.Getenv(envOpsWSTrustedProxies)); raw != "" {
+	if raw := envutil.GetString(envOpsWSTrustedProxies, ""); raw != "" {
 		prefixes, invalid := parseTrustedProxyList(raw)
 		if len(invalid) > 0 {
 			log.Printf("[OpsWS] invalid %s entries ignored: %s", envOpsWSTrustedProxies, strings.Join(invalid, ", "))
@@ -678,14 +669,15 @@ func loadOpsWSProxyConfigFromEnv() OpsWSProxyConfig {
 		cfg.TrustedProxies = prefixes
 	}
 
-	if v := strings.TrimSpace(os.Getenv(envOpsWSOriginPolicy)); v != "" {
-		normalized := strings.ToLower(v)
-		switch normalized {
-		case OriginPolicyStrict, OriginPolicyPermissive:
-			cfg.OriginPolicy = normalized
-		default:
-			log.Printf("[OpsWS] invalid %s=%q (expected %q or %q); using default=%q", envOpsWSOriginPolicy, v, OriginPolicyStrict, OriginPolicyPermissive, cfg.OriginPolicy)
+	normalized := strings.ToLower(cfg.OriginPolicy)
+	switch normalized {
+	case OriginPolicyStrict, OriginPolicyPermissive:
+		cfg.OriginPolicy = normalized
+	default:
+		if cfg.OriginPolicy != "" {
+			log.Printf("[OpsWS] invalid %s=%q (expected %q or %q); using default=%q", envOpsWSOriginPolicy, cfg.OriginPolicy, OriginPolicyStrict, OriginPolicyPermissive, OriginPolicyPermissive)
 		}
+		cfg.OriginPolicy = OriginPolicyPermissive
 	}
 
 	return cfg
@@ -693,23 +685,15 @@ func loadOpsWSProxyConfigFromEnv() OpsWSProxyConfig {
 
 func loadOpsWSRuntimeLimitsFromEnv() opsWSRuntimeLimits {
 	cfg := opsWSRuntimeLimits{
-		MaxConns:      defaultMaxWSConns,
-		MaxConnsPerIP: defaultMaxWSConnsPerIP,
+		MaxConns:      int32(envutil.GetInt(envOpsWSMaxConns, defaultMaxWSConns)),
+		MaxConnsPerIP: int32(envutil.GetInt(envOpsWSMaxConnsPerIP, defaultMaxWSConnsPerIP)),
 	}
 
-	if v := strings.TrimSpace(os.Getenv(envOpsWSMaxConns)); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-			cfg.MaxConns = int32(parsed)
-		} else {
-			log.Printf("[OpsWS] invalid %s=%q (expected int>0); using default=%d", envOpsWSMaxConns, v, cfg.MaxConns)
-		}
+	if cfg.MaxConns <= 0 {
+		cfg.MaxConns = defaultMaxWSConns
 	}
-	if v := strings.TrimSpace(os.Getenv(envOpsWSMaxConnsPerIP)); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
-			cfg.MaxConnsPerIP = int32(parsed)
-		} else {
-			log.Printf("[OpsWS] invalid %s=%q (expected int>=0); using default=%d", envOpsWSMaxConnsPerIP, v, cfg.MaxConnsPerIP)
-		}
+	if cfg.MaxConnsPerIP < 0 {
+		cfg.MaxConnsPerIP = defaultMaxWSConnsPerIP
 	}
 	return cfg
 }
