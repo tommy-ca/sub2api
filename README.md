@@ -44,7 +44,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 | Component | Technology |
 |-----------|------------|
-| Backend | Go 1.25.5, Gin, Ent |
+| Backend | Go 1.25.6, Gin, Ent |
 | Frontend | Vue 3.4+, Vite 5+, TailwindCSS |
 | Database | PostgreSQL 15+ |
 | Cache/Queue | Redis 7+ |
