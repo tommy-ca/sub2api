@@ -149,17 +149,17 @@ mkdir -p sub2api-deploy && cd sub2api-deploy
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Start services
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 
 # View logs
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` and `.env.example`
+- Downloads `docker-compose.override.yml` and `.env.example`
 - Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
 - Creates `.env` file with auto-generated secrets
-- Creates data directories (uses local directories for easy backup/migration)
+- Creates data directories (uses local directories via override file for easy backup/migration)
 - Displays generated credentials for your reference
 
 #### Manual Deployment
@@ -221,26 +221,28 @@ mkdir -p data postgres_data redis_data
 
 # 5. Start all services
 # Option A: Local directory version (recommended - easy migration)
-docker-compose -f docker-compose.local.yml up -d
-
-# Option B: Named volumes version (simple setup)
+# Just run up, it will automatically use docker-compose.override.yml
 docker-compose up -d
 
+# Option B: Named volumes version (simple setup)
+# Explicitly use the main file to skip the override
+docker-compose -f docker-compose.yml up -d
+
 # 6. Check status
-docker-compose -f docker-compose.local.yml ps
+docker-compose ps
 
 # 7. View logs
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 #### Deployment Versions
 
 | Version | Data Storage | Migration | Best For |
 |---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories | ✅ Easy (tar entire directory) | Production, frequent backups |
+| **docker-compose.override.yml** | Local directories | ✅ Easy (tar entire directory) | Production, frequent backups |
 | **docker-compose.yml** | Named volumes | ⚠️ Requires docker commands | Simple setup |
 
-**Recommendation:** Use `docker-compose.local.yml` (deployed by script) for easier data management.
+**Recommendation:** Use the automated script which sets up `docker-compose.override.yml` for easier data management.
 
 #### Access
 
@@ -261,17 +263,17 @@ docker compose exec sub2api cat /app/data/.initial_admin_password
 
 ```bash
 # Pull latest image and recreate container
-docker-compose -f docker-compose.local.yml pull
-docker-compose -f docker-compose.local.yml up -d
+docker-compose pull
+docker-compose up -d
 ```
 
 #### Easy Migration (Local Directory Version)
 
-When using `docker-compose.local.yml`, migrate to a new server easily:
+When using `docker-compose.override.yml`, migrate to a new server easily:
 
 ```bash
 # On source server
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 cd ..
 tar czf sub2api-complete.tar.gz sub2api-deploy/
 
@@ -281,23 +283,23 @@ scp sub2api-complete.tar.gz user@new-server:/path/
 # On new server
 tar xzf sub2api-complete.tar.gz
 cd sub2api-deploy/
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 ```
 
 #### Useful Commands
 
 ```bash
 # Stop all services
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 
 # Restart
-docker-compose -f docker-compose.local.yml restart
+docker-compose restart
 
 # View all logs
-docker-compose -f docker-compose.local.yml logs -f
+docker-compose logs -f
 
 # Remove all data (caution!)
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 rm -rf data/ postgres_data/ redis_data/
 ```
 

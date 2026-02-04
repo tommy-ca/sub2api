@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/envutil"
 	"github.com/lib/pq"
 )
 
@@ -803,7 +803,7 @@ func resolveUsageStatsTimezone() string {
 	if tzName != "" && tzName != "Local" {
 		return tzName
 	}
-	if envTZ := strings.TrimSpace(os.Getenv("TZ")); envTZ != "" {
+	if envTZ := envutil.GetString("TZ", ""); envTZ != "" {
 		return envTZ
 	}
 	return "UTC"

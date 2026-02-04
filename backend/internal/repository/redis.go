@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"context"
 	"crypto/tls"
+	"log"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -21,7 +23,17 @@ import (
 // 2. MinIdleConns: 保持最小空闲连接，减少冷启动延迟（默认 10）
 // 3. DialTimeout/ReadTimeout/WriteTimeout: 精确控制各阶段超时
 func InitRedis(cfg *config.Config) *redis.Client {
-	return redis.NewClient(buildRedisOptions(cfg))
+	rdb := redis.NewClient(buildRedisOptions(cfg))
+
+	// Add Ping check for Fail Fast policy
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("failed to connect to Redis at %s: %v", cfg.Redis.Address(), err)
+	}
+
+	return rdb
 }
 
 // buildRedisOptions 构建 Redis 连接选项

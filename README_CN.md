@@ -156,17 +156,17 @@ mkdir -p sub2api-deploy && cd sub2api-deploy
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
 # 启动服务
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 
 # 查看日志
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 **脚本功能：**
-- 下载 `docker-compose.local.yml` 和 `.env.example`
+- 下载 `docker-compose.override.yml` 和 `.env.example`
 - 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
 - 创建 `.env` 文件并填充自动生成的密钥
-- 创建数据目录（使用本地目录，便于备份和迁移）
+- 创建数据目录（使用本地目录，通过 override 文件实现，便于备份和迁移）
 - 显示生成的凭证供你记录
 
 #### 手动部署
@@ -225,26 +225,28 @@ mkdir -p data postgres_data redis_data
 
 # 5. 启动所有服务
 # 选项 A：本地目录版（推荐 - 易于迁移）
-docker-compose -f docker-compose.local.yml up -d
-
-# 选项 B：命名卷版（简单设置）
+# 直接运行 up，会自动加载 docker-compose.override.yml
 docker-compose up -d
 
+# 选项 B：命名卷版（简单设置）
+# 显式指定主文件以跳过 override
+docker-compose -f docker-compose.yml up -d
+
 # 6. 查看状态
-docker-compose -f docker-compose.local.yml ps
+docker-compose ps
 
 # 7. 查看日志
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 #### 部署版本对比
 
 | 版本 | 数据存储 | 迁移便利性 | 适用场景 |
 |------|---------|-----------|---------|
-| **docker-compose.local.yml** | 本地目录 | ✅ 简单（打包整个目录） | 生产环境、频繁备份 |
+| **docker-compose.override.yml** | 本地目录 | ✅ 简单（打包整个目录） | 生产环境、频繁备份 |
 | **docker-compose.yml** | 命名卷 | ⚠️ 需要 docker 命令 | 简单设置 |
 
-**推荐：** 使用 `docker-compose.local.yml`（脚本部署）以便更轻松地管理数据。
+**推荐：** 使用自动化脚本，它会设置 `docker-compose.override.yml` 以便更轻松地管理数据。
 
 #### 访问
 
@@ -261,17 +263,17 @@ docker compose exec sub2api cat /app/data/.initial_admin_password
 
 ```bash
 # 拉取最新镜像并重建容器
-docker-compose -f docker-compose.local.yml pull
-docker-compose -f docker-compose.local.yml up -d
+docker-compose pull
+docker-compose up -d
 ```
 
 #### 轻松迁移（本地目录版）
 
-使用 `docker-compose.local.yml` 时，可以轻松迁移到新服务器：
+使用 `docker-compose.override.yml` 时，可以轻松迁移到新服务器：
 
 ```bash
 # 源服务器
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 cd ..
 tar czf sub2api-complete.tar.gz sub2api-deploy/
 
@@ -281,23 +283,23 @@ scp sub2api-complete.tar.gz user@new-server:/path/
 # 新服务器
 tar xzf sub2api-complete.tar.gz
 cd sub2api-deploy/
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 ```
 
 #### 常用命令
 
 ```bash
 # 停止所有服务
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 
 # 重启
-docker-compose -f docker-compose.local.yml restart
+docker-compose restart
 
 # 查看所有日志
-docker-compose -f docker-compose.local.yml logs -f
+docker-compose logs -f
 
 # 删除所有数据（谨慎！）
-docker-compose -f docker-compose.local.yml down
+docker-compose down
 rm -rf data/ postgres_data/ redis_data/
 ```
 

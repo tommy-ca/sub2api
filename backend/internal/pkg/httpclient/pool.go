@@ -17,11 +17,13 @@ package httpclient
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -55,6 +57,16 @@ type Options struct {
 // sharedClients 存储按配置参数缓存的 http.Client 实例
 var sharedClients sync.Map
 
+var (
+	cacheHits   atomic.Uint64
+	cacheMisses atomic.Uint64
+)
+
+// GetCacheStats 返回缓存命中/未命中统计信息
+func GetCacheStats() (hits, misses uint64) {
+	return cacheHits.Load(), cacheMisses.Load()
+}
+
 // GetClient 返回共享的 HTTP 客户端实例
 // 性能优化：相同配置复用同一客户端，避免重复创建 Transport
 // 安全说明：代理配置失败时直接返回错误，不会回退到直连，避免 IP 关联风险
@@ -62,9 +74,14 @@ func GetClient(opts Options) (*http.Client, error) {
 	key := buildClientKey(opts)
 	if cached, ok := sharedClients.Load(key); ok {
 		if client, ok := cached.(*http.Client); ok {
+			cacheHits.Add(1)
+			slog.Debug("httpclient_cache_hit", "key", key)
 			return client, nil
 		}
 	}
+
+	cacheMisses.Add(1)
+	slog.Debug("httpclient_cache_miss", "key", key)
 
 	client, err := buildClient(opts)
 	if err != nil {

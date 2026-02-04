@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/envutil"
 	"github.com/spf13/viper"
 )
 
@@ -576,7 +576,7 @@ func Load() (*Config, error) {
 
 	// Add config paths in priority order
 	// 1. DATA_DIR environment variable (highest priority)
-	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
+	if dataDir := envutil.GetString("DATA_DIR", ""); dataDir != "" {
 		viper.AddConfigPath(dataDir)
 	}
 	// 2. Docker data directory

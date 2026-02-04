@@ -32,7 +32,7 @@ const (
 // Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
 func GetDataDir() string {
 	// Check DATA_DIR environment variable first
-	if dir := os.Getenv("DATA_DIR"); dir != "" {
+	if dir := envutil.GetString("DATA_DIR", ""); dir != "" {
 		return dir
 	}
 
