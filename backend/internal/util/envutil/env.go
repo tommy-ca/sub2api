@@ -26,11 +26,11 @@ func GetInt(key string, defaultValue int) int {
 
 // GetBool returns the value of the environment variable as a bool or the default value
 func GetBool(key string, defaultValue bool) bool {
-	v := strings.ToLower(os.Getenv(key))
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	switch v {
-	case "1", "t", "true", "on", "y", "yes":
+	case "true", "1":
 		return true
-	case "0", "f", "false", "off", "n", "no":
+	case "false", "0":
 		return false
 	}
 	return defaultValue

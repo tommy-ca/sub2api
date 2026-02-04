@@ -1,0 +1,21 @@
+#!/bin/bash
+# Simple, readable, Omakase-style check
+echo "Checking service discovery..."
+
+# Use SERVER_PORT if set, otherwise default to 8080
+PORT=${SERVER_PORT:-8080}
+
+# Check application health
+curl -sf http://localhost:${PORT}/health > /dev/null && echo "App: OK" || echo "App: FAILED"
+
+# Check Postgres (assumes postgres service name in Docker network)
+# We use nc (netcat) or curl to check port availability
+if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 postgres 5432 && echo "Postgres: OK" || echo "Postgres: UNREACHABLE"
+    nc -z -w 2 redis 6379 && echo "Redis: OK" || echo "Redis: UNREACHABLE"
+else
+    echo "netcat (nc) not found, skipping port checks."
+    echo "Hint: This script is intended to run INSIDE the sub2api container."
+fi
+
+echo "Network sanity check complete."

@@ -2,6 +2,7 @@ package envutil
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -40,24 +41,55 @@ func TestGetBool(t *testing.T) {
 		expected bool
 	}{
 		{"true", false, true},
+		{" TRUE ", false, true},
 		{"1", false, true},
-		{"yes", false, true},
+		{" 1 ", false, true},
 		{"false", true, false},
+		{" FALSE ", true, false},
 		{"0", true, false},
-		{"no", true, false},
+		{" 0 ", true, false},
+		{"yes", false, false}, // No longer supported (opinionated)
+		{"on", false, false},  // No longer supported (opinionated)
+		{"no", true, true},    // No longer supported (opinionated)
+		{"off", true, true},   // No longer supported (opinionated)
 		{"invalid", true, true},
+		{"invalid", false, false},
 		{"", false, false},
+		{"", true, true},
 	}
 
 	for _, tt := range tests {
+		key := "TEST_BOOL_" + strings.ReplaceAll(strings.TrimSpace(tt.val), " ", "_")
 		if tt.val != "" {
-			os.Setenv("TEST_BOOL", tt.val)
-		} else {
-			os.Unsetenv("TEST_BOOL")
+			os.Setenv(key, tt.val)
+			defer os.Unsetenv(key)
 		}
 
-		if GetBool("TEST_BOOL", tt.def) != tt.expected {
-			t.Errorf("GetBool(%s, %t) failed, expected %t", tt.val, tt.def, tt.expected)
+		if res := GetBool(key, tt.def); res != tt.expected {
+			t.Errorf("GetBool(%s [raw: %q], default: %t) failed, expected %t, got %t", key, tt.val, tt.def, tt.expected, res)
 		}
 	}
+}
+
+func FuzzGetBool(f *testing.F) {
+	f.Add("true")
+	f.Add("false")
+	f.Add("1")
+	f.Add("0")
+	f.Add("on")
+	f.Add("off")
+	f.Add("yes")
+	f.Add("no")
+	f.Add(" ")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, val string) {
+		key := "FUZZ_TEST_BOOL"
+		os.Setenv(key, val)
+		defer os.Unsetenv(key)
+
+		// GetBool should never crash
+		_ = GetBool(key, true)
+		_ = GetBool(key, false)
+	})
 }

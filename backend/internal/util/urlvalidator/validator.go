@@ -92,17 +92,20 @@ func IsPrivateIP(ip net.IP) bool {
 		return false
 	}
 
-	// Standard checks
+	// Standard checks: loopback, RFC 1918, RFC 4193, link-local, unspecified, multicast.
+	// Go's IsLoopback and IsPrivate (in recent versions) also handle IPv4-mapped IPv6.
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
 	}
 
-	// Additional internal/reserved ranges not covered by ip.IsPrivate() in older Go versions
-	// or specific to some cloud/provider internal networks.
-
-	// Carrier-grade NAT: 100.64.0.0/10
+	// Additional internal/reserved ranges not covered by ip.IsPrivate() in Go.
 	if ip4 := ip.To4(); ip4 != nil {
+		// "This host on this network": 0.0.0.0/8
+		if ip4[0] == 0 {
+			return true
+		}
+		// Carrier-grade NAT: 100.64.0.0/10
 		if ip4[0] == 100 && (ip4[1] >= 64 && ip4[1] <= 127) {
 			return true
 		}
@@ -110,6 +113,37 @@ func IsPrivateIP(ip net.IP) bool {
 		if ip4[0] == 198 && (ip4[1] >= 18 && ip4[1] <= 19) {
 			return true
 		}
+		// IETF Protocol Assignments: 192.0.0.0/24
+		if ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 0 {
+			return true
+		}
+		// TEST-NET-1: 192.0.2.0/24
+		if ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 2 {
+			return true
+		}
+		// TEST-NET-2: 198.51.100.0/24
+		if ip4[0] == 198 && ip4[1] == 51 && ip4[2] == 100 {
+			return true
+		}
+		// TEST-NET-3: 203.0.113.0/24
+		if ip4[0] == 203 && ip4[1] == 0 && ip4[2] == 113 {
+			return true
+		}
+		// Reserved: 240.0.0.0/4
+		if ip4[0] >= 240 {
+			return true
+		}
+	} else {
+		// IPv6 specific checks
+		// Teredo: 2001:0000::/32
+		if ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x00 && ip[3] == 0x00 {
+			return true
+		}
+		// 6to4: 2002::/16
+		if ip[0] == 0x20 && ip[1] == 0x02 {
+			return true
+		}
+		// AWS IMDSv2 IPv6: fd00:ec2::254 (covered by ip.IsPrivate, but good to be explicit or ensure it's tested)
 	}
 
 	return false
